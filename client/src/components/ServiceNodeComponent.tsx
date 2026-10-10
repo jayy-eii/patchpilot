@@ -12,8 +12,10 @@ import {
   CheckCircle2,
   XCircle,
   Activity,
+  Info,
 } from 'lucide-react';
 import { ServiceNode } from '../types';
+import { Tooltip } from './Tooltip';
 
 const getCategoryIcon = (iconName: string) => {
   switch (iconName) {
@@ -45,26 +47,32 @@ export const ServiceNodeComponent: React.FC<NodeProps> = memo(({ data, selected 
   let borderColor = 'border-surface-border hover:border-slate-500';
   let glowStyle = 'bg-surface-card';
   let statusBadge = (
-    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-      <CheckCircle2 className="w-3 h-3" /> Healthy
-    </span>
+    <Tooltip content="Green / Healthy: Service is fully operational and meeting its SLA.">
+      <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+        <CheckCircle2 className="w-3 h-3" /> Healthy
+      </span>
+    </Tooltip>
   );
 
   if (isFailed) {
     borderColor = 'border-rose-500 ring-2 ring-rose-500/40 animate-pulse';
     glowStyle = 'bg-rose-950/40 shadow-lg shadow-rose-950/60';
     statusBadge = (
-      <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/40 animate-pulse">
-        <XCircle className="w-3 h-3 text-rose-400" /> FAILED
-      </span>
+      <Tooltip content="Red / Root Failure: This service was injected with simulated outage.">
+        <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-300 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/40 animate-pulse">
+          <XCircle className="w-3 h-3 text-rose-400" /> FAILED
+        </span>
+      </Tooltip>
     );
   } else if (isAffected) {
     borderColor = 'border-amber-500 ring-1 ring-amber-500/30';
     glowStyle = 'bg-amber-950/30 shadow-md shadow-amber-950/40';
     statusBadge = (
-      <span className="flex items-center gap-1 text-[11px] font-medium text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
-        <AlertTriangle className="w-3 h-3 text-amber-400" /> AFFECTED
-      </span>
+      <Tooltip content="Amber / Affected: Downstream dependent knocked offline because an upstream service it relies on has failed.">
+        <span className="flex items-center gap-1 text-[11px] font-medium text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+          <AlertTriangle className="w-3 h-3 text-amber-400" /> AFFECTED
+        </span>
+      </Tooltip>
     );
   }
 
@@ -75,6 +83,7 @@ export const ServiceNodeComponent: React.FC<NodeProps> = memo(({ data, selected 
   return (
     <div
       className={`relative min-w-[220px] max-w-[260px] rounded-xl border p-3.5 transition-all duration-200 cursor-pointer ${borderColor} ${glowStyle}`}
+      title={`Click to inspect ${service.name}`}
     >
       {/* Target handle (receives connections) */}
       <Handle

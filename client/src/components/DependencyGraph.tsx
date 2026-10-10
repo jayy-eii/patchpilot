@@ -15,6 +15,7 @@ import '@xyflow/react/dist/style.css';
 
 import { ServiceNode, DependencyEdge } from '../types';
 import { ServiceNodeComponent } from './ServiceNodeComponent';
+import { Tooltip } from './Tooltip';
 import {
   RotateCcw,
   Maximize2,
@@ -24,6 +25,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   XCircle,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DependencyGraphProps {
@@ -61,7 +63,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({
   }, [services, selectedService]);
 
   // Map dependencies into React Flow edges
-  // Semantics: Source depends on Target
+  // Semantics: Source depends on Target (A -> B means A depends on B)
   const flowEdges: Edge[] = useMemo(() => {
     const serviceStatusMap = new Map(services.map(s => [s.id, s.status]));
 
@@ -153,6 +155,15 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({
           <span className="text-[11px] font-mono text-slate-400">({services.length} Nodes)</span>
         </div>
 
+        {/* Prominent Edge Semantics Banner directly on the graph */}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-card/90 backdrop-blur-md border border-cyan-500/30 text-xs text-cyan-300 font-mono shadow-lg">
+          <ArrowRight className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Edge Meaning: A ➔ B means "A depends on B"</span>
+          <Tooltip content="Caller ➔ Callee. If B experiences an outage, failure cascades backwards to A.">
+            <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-cyan-300 cursor-pointer ml-1" />
+          </Tooltip>
+        </div>
+
         {isSimulating && (
           <button
             onClick={onResetSimulation}
@@ -193,7 +204,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({
         />
       </ReactFlow>
 
-      {/* Floating State Legend */}
+      {/* Floating State Legend with Tooltips */}
       <div className="absolute bottom-4 left-4 z-10 max-w-sm p-3.5 rounded-xl bg-surface-card/95 backdrop-blur-md border border-surface-border shadow-2xl text-xs space-y-2">
         <div className="flex items-center justify-between text-slate-300 font-semibold text-[11px] uppercase tracking-wider">
           <span>Legend & Dependency Semantics</span>
@@ -201,23 +212,31 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({
         </div>
 
         <div className="grid grid-cols-3 gap-2 pt-1 text-[11px]">
-          <div className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-            <span>Healthy</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-rose-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-500/30 animate-pulse" />
-            <span>Root Fail</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-amber-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-500/20" />
-            <span>Affected</span>
-          </div>
+          <Tooltip content="Green: Nominal state. Service is operational and meeting SLA.">
+            <div className="flex items-center gap-1.5 text-emerald-400 cursor-help">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+              <span>Healthy</span>
+            </div>
+          </Tooltip>
+
+          <Tooltip content="Red: Root failure. The simulated fault was injected here.">
+            <div className="flex items-center gap-1.5 text-rose-400 cursor-help">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-500/30 animate-pulse" />
+              <span>Root Fail</span>
+            </div>
+          </Tooltip>
+
+          <Tooltip content="Amber: Downstream victim. Affected because it depends on an upstream failing service.">
+            <div className="flex items-center gap-1.5 text-amber-400 cursor-help">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-500/20" />
+              <span>Affected</span>
+            </div>
+          </Tooltip>
         </div>
 
         <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-400 leading-snug">
           <span className="text-slate-300 font-medium">Edge Direction: </span>
-          <code className="text-cyan-300 font-mono">Service A ➔ Service B</code> indicates A calls/depends on B. If B fails, failure cascades back to A.
+          <code className="text-cyan-300 font-mono">Service A ➔ Service B</code> means <strong>A depends on B</strong>. If B fails, failure cascades back to A.
         </div>
       </div>
     </div>
