@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { SimulationService } from '../services/simulation-service';
 import { TestRunnerService } from '../services/test-runner-service';
+import { TopologyValidator } from '../engine/topology-validator';
 
 export const createApiRouter = (simulationService: SimulationService): Router => {
   const router = Router();
@@ -32,6 +33,47 @@ export const createApiRouter = (simulationService: SimulationService): Router =>
       success: true,
       data: dependencies,
       total: dependencies.length,
+    });
+  });
+
+  // Import custom architecture topology JSON
+  router.post('/topology/import', (req: Request, res: Response) => {
+    const validation = TopologyValidator.validate(req.body);
+
+    if (!validation.isValid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Architecture validation failed.',
+        errors: validation.errors,
+      });
+    }
+
+    const result = simulationService.importTopology(
+      validation.sanitizedServices!,
+      validation.sanitizedDependencies!
+    );
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  });
+
+  // Restore baseline e-commerce sample architecture
+  router.post('/topology/restore-sample', (_req: Request, res: Response) => {
+    const result = simulationService.restoreSampleTopology();
+    res.json({
+      success: true,
+      data: result,
+    });
+  });
+
+  // Export current architecture topology as JSON
+  router.get('/topology/export', (_req: Request, res: Response) => {
+    const result = simulationService.exportTopology();
+    res.json({
+      success: true,
+      data: result,
     });
   });
 
@@ -121,7 +163,7 @@ export const createApiRouter = (simulationService: SimulationService): Router =>
     }
   });
 
-  // Get test suite results (cached or last verified)
+  // Get test suite results (cached or live)
   router.get('/tests', (_req: Request, res: Response) => {
     const results = TestRunnerService.getLastVerifiedResult();
     res.json({

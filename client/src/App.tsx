@@ -7,6 +7,7 @@ import { IncidentAnalysis } from './components/IncidentAnalysis';
 import { RepairRecommendations } from './components/RepairRecommendations';
 import { TestResultsView } from './components/TestResultsView';
 import { DocumentationView } from './components/DocumentationView';
+import { ImportArchitectureView } from './components/ImportArchitectureView';
 import { ServiceDetailModal } from './components/ServiceDetailModal';
 import { api } from './api/client';
 import {
@@ -62,8 +63,10 @@ export const App: React.FC = () => {
         setLatestIncident(incidentsData[0]);
       }
 
-      // Load initial recommendations for payment service
-      const initialRecs = await api.getRecommendations('payment-service');
+      // Load initial recommendations for first available service
+      const targetServiceId = servicesData[0]?.id || 'payment-service';
+      setSelectedServiceIdForRecs(targetServiceId);
+      const initialRecs = await api.getRecommendations(targetServiceId).catch(() => []);
       setRecommendations(initialRecs);
     } catch (err: any) {
       console.error('Initialization error:', err);
@@ -175,6 +178,65 @@ export const App: React.FC = () => {
       setError(err.message || 'Failed to run automated test suite.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Handle custom architecture import
+  const handleImportTopology = async (payload: any) => {
+    setActionLoading(true);
+    try {
+      const res = await api.importTopology(payload);
+      setServices(res.services);
+      setDependencies(res.dependencies);
+      setActiveSimulation(null);
+      setLatestIncident(null);
+
+      if (res.services.length > 0) {
+        setSelectedServiceIdForRecs(res.services[0].id);
+        const recs = await api.getRecommendations(res.services[0].id).catch(() => []);
+        setRecommendations(recs);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle restore sample e-commerce graph
+  const handleRestoreSampleTopology = async () => {
+    setActionLoading(true);
+    try {
+      const res = await api.restoreSampleTopology();
+      setServices(res.services);
+      setDependencies(res.dependencies);
+      setActiveSimulation(null);
+      setLatestIncident(null);
+      const scenariosData = await api.getScenarios();
+      setScenarios(scenariosData);
+
+      setSelectedServiceIdForRecs('payment-service');
+      const recs = await api.getRecommendations('payment-service').catch(() => []);
+      setRecommendations(recs);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle export current topology as JSON
+  const handleExportTopology = async () => {
+    try {
+      const exportData = await api.exportTopology();
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `patchpilot-architecture-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      setError('Failed to export graph as JSON.');
     }
   };
 
@@ -294,7 +356,19 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 6: Automated Test Results */}
+            {/* View 6: Bring-Your-Own Architecture (Import / Export) */}
+            {activeTab === 'import' && (
+              <ImportArchitectureView
+                currentServices={services}
+                currentDependencies={dependencies}
+                onImport={handleImportTopology}
+                onRestoreSample={handleRestoreSampleTopology}
+                onExport={handleExportTopology}
+                loading={actionLoading}
+              />
+            )}
+
+            {/* View 7: Automated Test Results */}
             {activeTab === 'tests' && (
               <TestResultsView
                 testResults={testResults}
@@ -303,7 +377,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 7: Project Documentation & Architecture */}
+            {/* View 8: Project Documentation & Architecture */}
             {activeTab === 'docs' && <DocumentationView />}
           </>
         )}

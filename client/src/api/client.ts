@@ -22,7 +22,13 @@ class ApiClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error ${response.status}: ${response.statusText}`);
+        const errorMessage =
+          errorData.errors && Array.isArray(errorData.errors)
+            ? errorData.errors.join(' | ')
+            : errorData.error || `HTTP error ${response.status}: ${response.statusText}`;
+        const customError: any = new Error(errorMessage);
+        customError.errors = errorData.errors;
+        throw customError;
       }
 
       const json = await response.json();
@@ -84,6 +90,38 @@ class ApiClient {
     return this.request('/tests/run', {
       method: 'POST',
     });
+  }
+
+  public async importTopology(payload: any): Promise<{
+    message: string;
+    servicesCount: number;
+    dependenciesCount: number;
+    services: ServiceNode[];
+    dependencies: DependencyEdge[];
+  }> {
+    return this.request('/topology/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  public async restoreSampleTopology(): Promise<{
+    message: string;
+    services: ServiceNode[];
+    dependencies: DependencyEdge[];
+  }> {
+    return this.request('/topology/restore-sample', {
+      method: 'POST',
+    });
+  }
+
+  public async exportTopology(): Promise<{
+    version: string;
+    exportedAt: string;
+    services: any[];
+    dependencies: any[];
+  }> {
+    return this.request('/topology/export');
   }
 }
 

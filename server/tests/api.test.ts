@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/server';
 
 describe('PatchPilot API Endpoints', () => {
+  beforeEach(async () => {
+    await request(app).post('/api/topology/restore-sample');
+    await request(app).post('/api/simulations/reset');
+  });
+
+  afterAll(async () => {
+    await request(app).post('/api/topology/restore-sample');
+    await request(app).post('/api/simulations/reset');
+  });
+
   it('GET /api/health returns healthy status', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);

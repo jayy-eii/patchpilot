@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Sparkles,
   ShieldCheck,
-  AlertTriangle,
+  Upload,
 } from 'lucide-react';
 import { SimulationResult, ServiceNode } from '../types';
 
@@ -37,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'simulator', label: 'Failure Simulator', icon: Flame },
     { id: 'incident', label: 'Incident Analysis', icon: AlertOctagon },
     { id: 'recommendations', label: 'Mitigations', icon: Wrench },
+    { id: 'import', label: 'Import Architecture', icon: Upload },
     { id: 'tests', label: 'Test Results', icon: FileCheck },
     { id: 'docs', label: 'Architecture & Docs', icon: BookOpen },
   ];
