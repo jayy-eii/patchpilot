@@ -77,7 +77,26 @@ export const createApiRouter = (simulationService: SimulationService): Router =>
     });
   });
 
-  // Trigger failure simulation
+  // Blast-radius ranking and Single Point of Failure (SPOF) detector
+  router.get('/analysis/spof-ranking', (_req: Request, res: Response) => {
+    const ranking = simulationService.getBlastRadiusRanking();
+    res.json({
+      success: true,
+      data: ranking,
+      total: ranking.length,
+    });
+  });
+
+  // Longest dependency chain and circular dependencies analysis
+  router.get('/analysis/dependency-chains', (_req: Request, res: Response) => {
+    const analysis = simulationService.getDependencyChainAnalysis();
+    res.json({
+      success: true,
+      data: analysis,
+    });
+  });
+
+  // Trigger single failure simulation
   router.post('/simulations', (req: Request, res: Response) => {
     try {
       const { serviceId } = req.body;
@@ -97,6 +116,30 @@ export const createApiRouter = (simulationService: SimulationService): Router =>
       res.status(404).json({
         success: false,
         error: error.message || 'Simulation execution failed.',
+      });
+    }
+  });
+
+  // Trigger multi-failure simulation (2+ concurrent failures)
+  router.post('/simulations/multi', (req: Request, res: Response) => {
+    try {
+      const { serviceIds } = req.body;
+      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Validation Error: 'serviceIds' must be a non-empty array of service IDs.",
+        });
+      }
+
+      const result = simulationService.runMultiSimulation(serviceIds);
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(404).json({
+        success: false,
+        error: error.message || 'Multi-failure simulation failed.',
       });
     }
   });

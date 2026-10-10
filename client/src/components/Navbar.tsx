@@ -11,6 +11,7 @@ import {
   Sparkles,
   ShieldCheck,
   Upload,
+  Target,
 } from 'lucide-react';
 import { SimulationResult, ServiceNode } from '../types';
 
@@ -35,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'overview', label: 'Overview', icon: Activity },
     { id: 'map', label: 'Dependency Map', icon: Layers },
     { id: 'simulator', label: 'Failure Simulator', icon: Flame },
+    { id: 'analysis', label: 'Smarter Analysis', icon: Target },
     { id: 'incident', label: 'Incident Analysis', icon: AlertOctagon },
     { id: 'recommendations', label: 'Mitigations', icon: Wrench },
     { id: 'import', label: 'Import Architecture', icon: Upload },

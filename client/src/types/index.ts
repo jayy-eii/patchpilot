@@ -114,3 +114,27 @@ export interface TestSuiteSummary {
   testCases: TestCaseResult[];
   rawOutput?: string;
 }
+
+export interface ServiceBlastRadiusRank {
+  rank: number;
+  serviceId: string;
+  serviceName: string;
+  tier: number;
+  category: string;
+  affectedCount: number;
+  affectedServiceIds: string[];
+  affectedServiceNames: string[];
+  blastRadiusPercentage: number;
+  severity: SeverityLevel;
+  severityScore: number;
+  isSinglePointOfFailure: boolean;
+}
+
+export interface DependencyChainAnalysis {
+  longestChain: string[];
+  longestChainNames: string[];
+  length: number;
+  totalChainsEvaluated: number;
+  cycles: string[][];
+  hasCycles: boolean;
+}

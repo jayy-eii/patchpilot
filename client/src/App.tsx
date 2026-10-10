@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { OverviewDashboard } from './components/OverviewDashboard';
 import { DependencyGraph } from './components/DependencyGraph';
 import { FailureSimulator } from './components/FailureSimulator';
+import { SmarterAnalysisView } from './components/SmarterAnalysisView';
 import { IncidentAnalysis } from './components/IncidentAnalysis';
 import { RepairRecommendations } from './components/RepairRecommendations';
 import { TestResultsView } from './components/TestResultsView';
@@ -63,7 +64,6 @@ export const App: React.FC = () => {
         setLatestIncident(incidentsData[0]);
       }
 
-      // Load initial recommendations for first available service
       const targetServiceId = servicesData[0]?.id || 'payment-service';
       setSelectedServiceIdForRecs(targetServiceId);
       const initialRecs = await api.getRecommendations(targetServiceId).catch(() => []);
@@ -82,7 +82,7 @@ export const App: React.FC = () => {
     loadInitialData();
   }, [loadInitialData]);
 
-  // Handle failure simulation
+  // Handle single failure simulation
   const handleSimulate = async (serviceId: string) => {
     try {
       setActionLoading(true);
@@ -94,11 +94,9 @@ export const App: React.FC = () => {
       setRecommendations(result.recommendations);
       setSelectedServiceIdForRecs(serviceId);
 
-      // Refresh services to sync node statuses
       const updatedServices = await api.getServices();
       setServices(updatedServices);
 
-      // Update selected detail modal if open
       if (selectedServiceForDetail) {
         const updated = updatedServices.find(s => s.id === selectedServiceForDetail.id);
         if (updated) setSelectedServiceForDetail(updated);
@@ -106,6 +104,30 @@ export const App: React.FC = () => {
     } catch (err: any) {
       console.error('Simulation error:', err);
       setError(err.message || 'Failed to execute failure simulation.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Handle concurrent multi-failure simulation
+  const handleSimulateMulti = async (serviceIds: string[]) => {
+    try {
+      setActionLoading(true);
+      setError(null);
+
+      const result = await api.runMultiSimulation(serviceIds);
+      setActiveSimulation(result);
+      setLatestIncident(result.incidentReport);
+      setRecommendations(result.recommendations);
+      if (serviceIds.length > 0) {
+        setSelectedServiceIdForRecs(serviceIds[0]);
+      }
+
+      const updatedServices = await api.getServices();
+      setServices(updatedServices);
+    } catch (err: any) {
+      console.error('Multi-simulation error:', err);
+      setError(err.message || 'Failed to execute multi-failure simulation.');
     } finally {
       setActionLoading(false);
     }
@@ -145,7 +167,6 @@ export const App: React.FC = () => {
       setRecommendations(result.recommendations);
       setSelectedServiceIdForRecs(result.failedServices[0]);
 
-      // Refresh services
       const updatedServices = await api.getServices();
       setServices(updatedServices);
     } catch (err: any) {
@@ -333,7 +354,19 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 4: Incident Analysis */}
+            {/* View 4: Smarter Analysis (SPOF, Blast Ranking, Multi-Failure, Chains) */}
+            {activeTab === 'analysis' && (
+              <SmarterAnalysisView
+                services={services}
+                onSimulateSingle={handleSimulate}
+                onSimulateMulti={handleSimulateMulti}
+                onResetSimulation={handleResetSimulation}
+                activeSimulation={activeSimulation}
+                loading={actionLoading}
+              />
+            )}
+
+            {/* View 5: Incident Analysis */}
             {activeTab === 'incident' && (
               <IncidentAnalysis
                 incident={latestIncident}
@@ -346,7 +379,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 5: Repair Recommendations */}
+            {/* View 6: Repair Recommendations */}
             {activeTab === 'recommendations' && (
               <RepairRecommendations
                 recommendations={recommendations}
@@ -356,7 +389,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 6: Bring-Your-Own Architecture (Import / Export) */}
+            {/* View 7: Bring-Your-Own Architecture (Import / Export) */}
             {activeTab === 'import' && (
               <ImportArchitectureView
                 currentServices={services}
@@ -368,7 +401,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 7: Automated Test Results */}
+            {/* View 8: Automated Test Results */}
             {activeTab === 'tests' && (
               <TestResultsView
                 testResults={testResults}
@@ -377,7 +410,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {/* View 8: Project Documentation & Architecture */}
+            {/* View 9: Project Documentation & Architecture */}
             {activeTab === 'docs' && <DocumentationView />}
           </>
         )}

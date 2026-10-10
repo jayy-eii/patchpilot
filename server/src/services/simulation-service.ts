@@ -7,7 +7,7 @@ import {
   DemoScenario,
 } from '../types';
 import { BASELINE_SERVICES, BASELINE_DEPENDENCIES, DEMO_SCENARIOS } from '../data/baseline';
-import { GraphEngine, TraversalResult } from '../engine/graph-engine';
+import { GraphEngine, TraversalResult, ServiceBlastRadiusRank, DependencyChainAnalysis } from '../engine/graph-engine';
 import { RiskScorer } from '../engine/risk-scorer';
 import { RecommendationEngine } from '../engine/recommendation-engine';
 
@@ -36,7 +36,6 @@ export class SimulationService {
   }
 
   public getScenarios(): DemoScenario[] {
-    // If custom topology is active, filter scenarios to those where service exists or return generic
     if (this.isCustomTopology) {
       const serviceIds = new Set(this.services.map(s => s.id));
       return DEMO_SCENARIOS.filter(sc => serviceIds.has(sc.serviceId));
@@ -58,6 +57,14 @@ export class SimulationService {
       throw new Error(`Service with ID '${serviceId}' not found.`);
     }
     return RecommendationEngine.getRecommendationsForService(service);
+  }
+
+  public getBlastRadiusRanking(): ServiceBlastRadiusRank[] {
+    return GraphEngine.computeBlastRadiusRanking(this.services, this.dependencies);
+  }
+
+  public getDependencyChainAnalysis(): DependencyChainAnalysis {
+    return GraphEngine.findLongestDependencyChain(this.services, this.dependencies);
   }
 
   public resetSimulation(): { message: string; services: ServiceNode[] } {
@@ -143,9 +150,18 @@ export class SimulationService {
   }
 
   public runSimulation(failedServiceId: string): SimulationResult {
-    const service = this.services.find(s => s.id === failedServiceId);
-    if (!service) {
-      throw new Error(`Service '${failedServiceId}' not found in active topology.`);
+    return this.runMultiSimulation([failedServiceId]);
+  }
+
+  public runMultiSimulation(failedServiceIds: string[]): SimulationResult {
+    if (!failedServiceIds || failedServiceIds.length === 0) {
+      throw new Error('At least one service ID must be specified for simulation.');
+    }
+
+    const serviceMap = new Map(this.services.map(s => [s.id, s]));
+    const invalidIds = failedServiceIds.filter(id => !serviceMap.has(id));
+    if (invalidIds.length > 0) {
+      throw new Error(`Service ID(s) not found in topology: ${invalidIds.join(', ')}`);
     }
 
     // Reset statuses to baseline first
@@ -153,45 +169,56 @@ export class SimulationService {
       s.status = 'healthy';
     });
 
-    // Traverse downstream impact using BFS
+    // Traverse downstream impact using BFS across all root failed services
     const traversal: TraversalResult = GraphEngine.traverseDownstreamImpact(
-      [failedServiceId],
+      failedServiceIds,
       this.services,
       this.dependencies
     );
 
-    // Update statuses
-    const targetNode = this.services.find(s => s.id === failedServiceId);
-    if (targetNode) {
-      targetNode.status = 'failed';
-    }
-
+    const rootFailedSet = new Set(failedServiceIds);
     const affectedSet = new Set(traversal.affectedServiceIds);
+
+    // Update node statuses
     this.services.forEach(s => {
-      if (s.id !== failedServiceId && affectedSet.has(s.id)) {
+      if (rootFailedSet.has(s.id)) {
+        s.status = 'failed';
+      } else if (affectedSet.has(s.id)) {
         s.status = 'affected';
+      } else {
+        s.status = 'healthy';
       }
     });
 
-    // Recommendations & Mitigation Steps
-    const recommendations = RecommendationEngine.getRecommendationsForService(targetNode!);
-    const mitigationSteps = RecommendationEngine.getMitigationSummarySteps(targetNode!);
+    const primaryTargetNode = serviceMap.get(failedServiceIds[0])!;
+    const allRecommendations: RepairRecommendation[] = [];
+    const allMitigationSteps: string[] = [];
 
-    // Incident Report & Risk Assessment
+    failedServiceIds.forEach(id => {
+      const node = serviceMap.get(id);
+      if (node) {
+        allRecommendations.push(...RecommendationEngine.getRecommendationsForService(node));
+        allMitigationSteps.push(...RecommendationEngine.getMitigationSummarySteps(node));
+      }
+    });
+
     const incidentReport = RiskScorer.generateIncidentReport(
-      targetNode!,
+      primaryTargetNode,
       traversal,
       this.services,
       this.dependencies,
-      mitigationSteps
+      allMitigationSteps
     );
 
-    // Prepend to incidents history
+    // If multi-failure, update severity reason and title to reflect multiple points of failure
+    if (failedServiceIds.length > 1) {
+      incidentReport.severityReason = `Multi-Service Simultaneous Outage: [${failedServiceIds.map(id => serviceMap.get(id)?.name || id).join(', ')}] failed simultaneously, knocking offline ${traversal.affectedServiceIds.length} downstream services.`;
+    }
+
     this.incidents.unshift(incidentReport);
 
-    const blastRadiusPercentage = Math.round(
-      (traversal.affectedServiceIds.length / (this.services.length - 1 || 1)) * 100
-    );
+    const maxVictims = Math.max(1, this.services.length - failedServiceIds.length);
+    const blastRadiusPercentage = Math.min(100, Math.round((traversal.affectedServiceIds.length / maxVictims) * 100));
 
     const healthyServices = this.services
       .filter(s => s.status === 'healthy')
@@ -200,13 +227,13 @@ export class SimulationService {
     const result: SimulationResult = {
       simulationId: `SIM-${Date.now().toString(36).toUpperCase()}`,
       timestamp: new Date().toISOString(),
-      failedServices: [failedServiceId],
+      failedServices: failedServiceIds,
       affectedServices: traversal.affectedServiceIds,
       healthyServices,
       blastRadiusPercentage,
       impactedPaths: traversal.impactedPaths,
       incidentReport,
-      recommendations,
+      recommendations: allRecommendations,
     };
 
     this.currentSimulation = result;

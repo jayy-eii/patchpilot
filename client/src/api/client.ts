@@ -6,6 +6,8 @@ import {
   RepairRecommendation,
   DemoScenario,
   TestSuiteSummary,
+  ServiceBlastRadiusRank,
+  DependencyChainAnalysis,
 } from '../types';
 
 const API_BASE = '/api';
@@ -66,6 +68,13 @@ class ApiClient {
     });
   }
 
+  public async runMultiSimulation(serviceIds: string[]): Promise<SimulationResult> {
+    return this.request('/simulations/multi', {
+      method: 'POST',
+      body: JSON.stringify({ serviceIds }),
+    });
+  }
+
   public async resetSimulation(): Promise<{ message: string; services: ServiceNode[] }> {
     return this.request('/simulations/reset', {
       method: 'POST',
@@ -122,6 +131,14 @@ class ApiClient {
     dependencies: any[];
   }> {
     return this.request('/topology/export');
+  }
+
+  public async getSpofRanking(): Promise<ServiceBlastRadiusRank[]> {
+    return this.request('/analysis/spof-ranking');
+  }
+
+  public async getDependencyChains(): Promise<DependencyChainAnalysis> {
+    return this.request('/analysis/dependency-chains');
   }
 }
 

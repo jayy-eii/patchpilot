@@ -1,4 +1,5 @@
-import { ServiceNode, DependencyEdge } from '../types';
+import { ServiceNode, DependencyEdge, SeverityLevel } from '../types';
+import { RiskScorer } from './risk-scorer';
 
 export interface TraversalResult {
   rootFailedIds: string[];
@@ -16,6 +17,30 @@ export interface GraphValidationResult {
   duplicateEdges: string[];
   isolatedNodeIds: string[];
   cycles: string[][];
+}
+
+export interface ServiceBlastRadiusRank {
+  rank: number;
+  serviceId: string;
+  serviceName: string;
+  tier: number;
+  category: string;
+  affectedCount: number;
+  affectedServiceIds: string[];
+  affectedServiceNames: string[];
+  blastRadiusPercentage: number;
+  severity: SeverityLevel;
+  severityScore: number;
+  isSinglePointOfFailure: boolean;
+}
+
+export interface DependencyChainAnalysis {
+  longestChain: string[];
+  longestChainNames: string[];
+  length: number;
+  totalChainsEvaluated: number;
+  cycles: string[][];
+  hasCycles: boolean;
 }
 
 /**
@@ -95,12 +120,10 @@ export class GraphEngine {
     }
 
     const color = new Map<string, number>(); // 0: White, 1: Gray, 2: Black
-    const parentMap = new Map<string, string | null>();
     const cycles: string[][] = [];
 
     for (const s of services) {
       color.set(s.id, 0);
-      parentMap.set(s.id, null);
     }
 
     const dfs = (nodeId: string, currentPath: string[]) => {
@@ -139,11 +162,6 @@ export class GraphEngine {
    *
    * Uses Breadth-First Search (BFS) over the Dependents Adjacency List.
    * Guaranteed termination even in cyclic graphs by tracking `visited` state.
-   *
-   * @param rootFailedServiceIds Single or multiple service IDs that experience failure
-   * @param services Array of all service nodes
-   * @param dependencies Array of dependency edges
-   * @returns TraversalResult with affected IDs, dependency propagation paths, and cycle flags
    */
   public static traverseDownstreamImpact(
     rootFailedServiceIds: string[],
@@ -155,7 +173,6 @@ export class GraphEngine {
 
     // Build Dependents Adjacency Map:
     // If source depends on target (source -> target), then when target fails, source is impacted.
-    // So target's dependents include source.
     const dependentsMap = new Map<string, string[]>();
     for (const s of services) {
       dependentsMap.set(s.id, []);
@@ -165,7 +182,7 @@ export class GraphEngine {
     const seenEdges = new Set<string>();
     for (const edge of dependencies) {
       if (!serviceMap.has(edge.source) || !serviceMap.has(edge.target)) {
-        continue; // Skip invalid node references safely
+        continue;
       }
       const sig = `${edge.target}->${edge.source}`;
       if (seenEdges.has(sig)) continue;
@@ -180,7 +197,6 @@ export class GraphEngine {
     const directDependentsRecord: Record<string, string[]> = {};
     const impactedPaths: string[][] = [];
 
-    // Path tracking for multi-step failure cascades
     // Queue stores tuple: [currentServiceId, pathFromRoot]
     const queue: Array<[string, string[]]> = [];
 
@@ -194,22 +210,18 @@ export class GraphEngine {
 
       const directDependents = dependentsMap.get(currentId) || [];
       for (const dependentId of directDependents) {
-        // Build candidate cascade path
         const newPath = [...currentPath, dependentId];
 
-        // If not already in affected set, mark as affected
         if (!validRootIds.includes(dependentId)) {
           affectedSet.add(dependentId);
         }
 
-        // Avoid infinite loop in case of circular dependency
         if (!visited.has(dependentId)) {
           visited.add(dependentId);
           visitedOrder.push(dependentId);
           impactedPaths.push(newPath);
           queue.push([dependentId, newPath]);
         } else if (!currentPath.includes(dependentId)) {
-          // If already visited via another branch, still record the alternate impact path
           impactedPaths.push(newPath);
         }
       }
@@ -225,6 +237,121 @@ export class GraphEngine {
       visitedOrder,
       hasCycles: cycles.length > 0,
       cycles,
+    };
+  }
+
+  /**
+   * Computes Blast-Radius Ranking and identifies Single Points of Failure (SPOF).
+   * Deterministically evaluates every service in the graph and ranks them by impact.
+   */
+  public static computeBlastRadiusRanking(
+    services: ServiceNode[],
+    dependencies: DependencyEdge[]
+  ): ServiceBlastRadiusRank[] {
+    const serviceNameMap = new Map(services.map(s => [s.id, s.name]));
+    const totalCount = services.length;
+    const maxVictims = Math.max(1, totalCount - 1);
+
+    const rankings: ServiceBlastRadiusRank[] = services.map(service => {
+      const traversal = this.traverseDownstreamImpact([service.id], services, dependencies);
+      const risk = RiskScorer.calculateRisk(service, traversal, services, dependencies);
+      const affectedCount = traversal.affectedServiceIds.length;
+      const blastRadiusPercentage = Math.round((affectedCount / maxVictims) * 100);
+
+      // Single Point of Failure (SPOF):
+      // A service whose failure takes down >= 40% of the remaining cluster or >= 3 services
+      const isSinglePointOfFailure = affectedCount >= 3 || (totalCount > 2 && affectedCount / maxVictims >= 0.4);
+
+      return {
+        rank: 0,
+        serviceId: service.id,
+        serviceName: service.name,
+        tier: service.tier,
+        category: service.category,
+        affectedCount,
+        affectedServiceIds: traversal.affectedServiceIds,
+        affectedServiceNames: traversal.affectedServiceIds.map(id => serviceNameMap.get(id) || id),
+        blastRadiusPercentage,
+        severity: risk.severity,
+        severityScore: risk.compositeScore,
+        isSinglePointOfFailure,
+      };
+    });
+
+    // Rank descending: highest affected count first, then highest severity score
+    rankings.sort((a, b) => {
+      if (b.affectedCount !== a.affectedCount) {
+        return b.affectedCount - a.affectedCount;
+      }
+      return b.severityScore - a.severityScore;
+    });
+
+    rankings.forEach((r, idx) => {
+      r.rank = idx + 1;
+    });
+
+    return rankings;
+  }
+
+  /**
+   * Finds the longest dependency call chain in the graph and detects circular dependencies.
+   * Path: A calls B calls C calls D...
+   */
+  public static findLongestDependencyChain(
+    services: ServiceNode[],
+    dependencies: DependencyEdge[]
+  ): DependencyChainAnalysis {
+    const serviceIds = new Set(services.map(s => s.id));
+    const serviceNameMap = new Map(services.map(s => [s.id, s.name]));
+    const adj = new Map<string, string[]>();
+
+    for (const s of services) {
+      adj.set(s.id, []);
+    }
+
+    for (const edge of dependencies) {
+      if (serviceIds.has(edge.source) && serviceIds.has(edge.target)) {
+        adj.get(edge.source)?.push(edge.target);
+      }
+    }
+
+    let longestChain: string[] = [];
+    let totalChains = 0;
+
+    const dfs = (currentId: string, currentPath: string[], visitedInPath: Set<string>) => {
+      totalChains++;
+      visitedInPath.add(currentId);
+      currentPath.push(currentId);
+
+      if (currentPath.length > longestChain.length) {
+        longestChain = [...currentPath];
+      }
+
+      const neighbors = adj.get(currentId) || [];
+      for (const neighbor of neighbors) {
+        // Prevent infinite loop on cycles
+        if (!visitedInPath.has(neighbor)) {
+          dfs(neighbor, currentPath, visitedInPath);
+        }
+      }
+
+      currentPath.pop();
+      visitedInPath.delete(currentId);
+    };
+
+    for (const s of services) {
+      dfs(s.id, [], new Set());
+    }
+
+    const cycles = this.detectCycles(services, dependencies);
+
+    return {
+      longestChain,
+      longestChainNames: longestChain.map(id => serviceNameMap.get(id) || id),
+      length: longestChain.length,
+      totalChainsEvaluated: totalChains,
+      cycles,
+      hasCycles: cycles.length > 0,
     };
   }
 
