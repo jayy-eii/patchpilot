@@ -9,6 +9,11 @@ import {
   ServiceBlastRadiusRank,
   DependencyChainAnalysis,
 } from '../types';
+import {
+  GitHubRepoSummary,
+  RepoAnalysis,
+  GitHubConnectionStatus,
+} from '../types/analysis';
 
 const API_BASE = '/api';
 
@@ -139,6 +144,42 @@ class ApiClient {
 
   public async getDependencyChains(): Promise<DependencyChainAnalysis> {
     return this.request('/analysis/dependency-chains');
+  }
+
+  /* ---------------- GitHub Repository Flow (real data) --------------- */
+
+  public async getConnectionStatus(): Promise<GitHubConnectionStatus> {
+    return this.request('/repos/status');
+  }
+
+  public async getRepos(username: string): Promise<GitHubRepoSummary[]> {
+    return this.request(`/repos?username=${encodeURIComponent(username)}`);
+  }
+
+  public async analyzeRepo(owner: string, repo: string): Promise<RepoAnalysis> {
+    return this.request('/repos/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ owner, repo }),
+    });
+  }
+
+  public async getAnalysis(): Promise<RepoAnalysis> {
+    return this.request('/repos/analysis');
+  }
+
+  public async clearAnalysis(): Promise<void> {
+    return this.request('/repos/analysis', { method: 'DELETE' });
+  }
+
+  public async setGithubToken(token: string | null): Promise<{ message: string }> {
+    return this.request('/repos/token', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  public async getGithubTokenStatus(): Promise<{ tokenPresent: boolean }> {
+    return this.request('/repos/token');
   }
 }
 

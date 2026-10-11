@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { createApiRouter } from './routes/api';
+import { createReposRouter } from './routes/repos';
 import { SimulationService } from './services/simulation-service';
 
 export const app = express();
@@ -21,6 +23,7 @@ const simulationService = new SimulationService();
 
 // Attach API Routes under /api
 app.use('/api', createApiRouter(simulationService));
+app.use('/api/repos', createReposRouter());
 
 // Production Single-Service Serving:
 // If client/dist exists, serve the built Vite SPA directly from Express
